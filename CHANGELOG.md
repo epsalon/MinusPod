@@ -9,6 +9,12 @@ Alongside the standard sections, a "Breaking" section marks changes
 that require operator action; these are surfaced at the top of stable
 release notes.
 
+## [Unreleased]
+
+### Added
+- Dormant feeds. Settings > Global Defaults > Pause auto-process for unrequested feeds takes a number of days. A subscribed feed whose served RSS no podcast app has fetched in that long stops queueing new episodes for processing. Episodes still process on demand when played, and auto-process resumes on the next fetch. The next refresh then queues any unprocessed episode from the last 48 hours. A feed with Auto-Process set to Enabled is never paused, and local and recents feeds are exempt. Fetch times are recorded at most once every 10 minutes per feed, in the new `podcasts.last_feed_request_at` column. The upgrade sets that column to the upgrade time for existing feeds, so turning the setting on gives every feed a full grace period. The default is 0 (off). Feed responses gain `dormant` and `lastFeedRequestAt`, and the feed list and feed page show a Dormant label. API: `dormantFeedDays` on `PUT /api/v1/settings/ad-detection`. See [Dormant feeds](docs/configuration.md#dormant-feeds).
+- Unfetched-episode retention. Settings > Storage & Retention > Keep never-downloaded episodes for keeps a processed episode no client has downloaded for that many days after processing, in case the podcast app is offline. It only takes effect when longer than the feed's retention window. Once downloaded, an episode is kept at least Keep after first download for (default 3 days) past its first download, so a failed download can be retried. The first `GET` that serves processed audio is recorded in the new `episodes.first_fetched_at` column, which the upgrade fills in from download history. A retention reset clears it. Kept episodes still lose their pre-cut original on schedule, and failed episodes are not kept. The default is 0 (off). API: `unfetchedRetentionDays` and `fetchedRetentionGraceDays` on `GET`/`PUT /api/v1/settings/retention`. See [Unfetched-episode retention](docs/configuration.md#unfetched-episode-retention).
+
 ## [2.100.18] - 2026-10-18
 
 ### Added

@@ -9,6 +9,8 @@ import PodpingServersSection from './PodpingServersSection';
 interface GlobalDefaultsSectionProps {
   autoProcessEnabled: boolean;
   onAutoProcessEnabledChange: (enabled: boolean) => void;
+  dormantFeedDays: number;
+  onDormantFeedDaysChange: (days: number) => void;
   rssRefreshIntervalMinutes: number;
   onRssRefreshIntervalMinutesChange: (value: number) => void;
   podpingEnabled: boolean;
@@ -34,6 +36,8 @@ interface GlobalDefaultsSectionProps {
 function GlobalDefaultsSection({
   autoProcessEnabled,
   onAutoProcessEnabledChange,
+  dormantFeedDays,
+  onDormantFeedDaysChange,
   rssRefreshIntervalMinutes,
   onRssRefreshIntervalMinutesChange,
   podpingEnabled,
@@ -108,6 +112,28 @@ function GlobalDefaultsSection({
           </label>
           <p className="mt-2 text-sm text-muted-foreground">
             When a feed refresh discovers a new episode, queue it for processing automatically. Per-feed Auto-Process can override this.
+          </p>
+        </div>
+
+        {/* Dormant feeds */}
+        <div className="pt-4 border-t border-border">
+          <label htmlFor="dormantFeedDays" className="block text-sm font-medium text-foreground mb-2">
+            Pause auto-process for unrequested feeds
+          </label>
+          <div className="flex items-center gap-3">
+            <NumberInput
+              id="dormantFeedDays"
+              value={dormantFeedDays}
+              min={0}
+              max={3650}
+              step={1}
+              fallback={0}
+              onCommit={onDormantFeedDaysChange}
+            />
+            <span className="text-sm text-muted-foreground">days, 0 to turn off</span>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            A feed no podcast app has fetched for this many days stops auto-processing new episodes. Episodes still process when played, and auto-process resumes on the next feed fetch. A feed with Auto-Process set to Enabled is never paused.
           </p>
         </div>
 

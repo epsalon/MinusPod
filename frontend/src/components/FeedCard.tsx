@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import { Trash2 } from 'lucide-react';
 import { Feed } from '../api/types';
-import { feedDisplayTitle, feedHasUpstream } from '../utils/feedTitle';
+import { DORMANT_TITLE, feedDisplayTitle, feedHasUpstream } from '../utils/feedTitle';
 import { formatDate } from '../utils/format';
 import Artwork from './Artwork';
 import FeedArtworkLink from './FeedArtworkLink';
@@ -54,7 +54,11 @@ function FeedCard({ feed, onRefresh, onDelete, isRefreshing }: FeedCardProps) {
           {/* Every slot below always renders so cards share one height. */}
           <p className="text-xs text-muted-foreground mt-1 truncate">
             {feed.lastRefreshed ? `Updated ${formatDate(feed.lastRefreshed)}` : 'Not refreshed yet'}
-
+            {feed.dormant && (
+              <span className="text-foreground ml-2" title={DORMANT_TITLE}>
+                Dormant
+              </span>
+            )}
           </p>
           {hasUpstream && feed.lastRefreshError && <details className="text-xs text-warning mt-1">
             <summary className="cursor-pointer">Refresh failed</summary>

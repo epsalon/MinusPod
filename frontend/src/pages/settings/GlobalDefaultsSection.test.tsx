@@ -41,6 +41,8 @@ function Harness({ onCommit }: { onCommit: (minutes: number) => void }) {
       <GlobalDefaultsSection
         autoProcessEnabled={false}
         onAutoProcessEnabledChange={() => {}}
+        dormantFeedDays={0}
+        onDormantFeedDaysChange={() => {}}
         rssRefreshIntervalMinutes={minutes}
         onRssRefreshIntervalMinutesChange={setMinutes}
         podpingEnabled={false}
@@ -78,6 +80,8 @@ function PodpingHarness({ onCommit }: { onCommit: (payload: PodpingState) => voi
       <GlobalDefaultsSection
         autoProcessEnabled={false}
         onAutoProcessEnabledChange={() => {}}
+        dormantFeedDays={0}
+        onDormantFeedDaysChange={() => {}}
         rssRefreshIntervalMinutes={15}
         onRssRefreshIntervalMinutesChange={() => {}}
         podpingEnabled={podpingEnabled}
@@ -166,6 +170,58 @@ describe('GlobalDefaultsSection: Podping notifications toggle', () => {
   });
 });
 
+function DormantHarness({ onCommit }: { onCommit: (days: number) => void }) {
+  const [days, setDays] = useState(0);
+  return (
+    <>
+      <GlobalDefaultsSection
+        autoProcessEnabled
+        onAutoProcessEnabledChange={() => {}}
+        dormantFeedDays={days}
+        onDormantFeedDaysChange={setDays}
+        rssRefreshIntervalMinutes={15}
+        onRssRefreshIntervalMinutesChange={() => {}}
+        podpingEnabled={false}
+        onPodpingEnabledChange={() => {}}
+        maxFeedEpisodes={10}
+        onMaxFeedEpisodesChange={() => {}}
+        onlyExposeProcessedDefault={false}
+        onOnlyExposeProcessedDefaultChange={() => {}}
+        lowAdYieldAction="nothing"
+        onLowAdYieldActionChange={() => {}}
+        episodeLogRetentionDays={30}
+        onEpisodeLogRetentionDaysChange={() => {}}
+        episodeLogLevel="debug"
+        onEpisodeLogLevelChange={() => {}}
+        textRecurrenceHints={false}
+        onTextRecurrenceHintsChange={() => {}}
+        skipSecondPass={false}
+        onSkipSecondPassChange={() => {}}
+        differentialFetchMode="auto"
+        onDifferentialFetchModeChange={() => {}}
+      />
+      <button onClick={() => onCommit(days)}>Commit</button>
+    </>
+  );
+}
+
+describe('GlobalDefaultsSection: dormant feed days', () => {
+  it('renders 0 (off) and commits a typed value on blur', async () => {
+    let committed: number | null = null;
+    render(<DormantHarness onCommit={(days) => { committed = days; }} />);
+    const user = userEvent.setup();
+    const input = screen.getByLabelText('Pause auto-process for unrequested feeds') as HTMLInputElement;
+    expect(input.value).toBe('0');
+
+    await user.clear(input);
+    await user.type(input, '30');
+    await user.tab();
+    await user.click(screen.getByRole('button', { name: 'Commit' }));
+
+    expect(committed).toBe(30);
+  });
+});
+
 describe('GlobalDefaultsSection: no Segment actions details block', () => {
   it('does not render a Segment actions details element (moved to SegmentActionsSection)', () => {
     const { container } = render(<Harness onCommit={() => {}} />);
@@ -185,6 +241,8 @@ function LowAdYieldHarness({ onCommit }: { onCommit: (payload: LowAdYieldState) 
       <GlobalDefaultsSection
         autoProcessEnabled={false}
         onAutoProcessEnabledChange={() => {}}
+        dormantFeedDays={0}
+        onDormantFeedDaysChange={() => {}}
         rssRefreshIntervalMinutes={15}
         onRssRefreshIntervalMinutesChange={() => {}}
         podpingEnabled={false}
@@ -250,6 +308,8 @@ function EpisodeLogHarness({ onCommit }: { onCommit: (payload: EpisodeLogState) 
       <GlobalDefaultsSection
         autoProcessEnabled={false}
         onAutoProcessEnabledChange={() => {}}
+        dormantFeedDays={0}
+        onDormantFeedDaysChange={() => {}}
         rssRefreshIntervalMinutes={15}
         onRssRefreshIntervalMinutesChange={() => {}}
         podpingEnabled={false}
@@ -318,6 +378,8 @@ function TextRecurrenceHintsHarness({ onCommit }: { onCommit: (payload: TextRecu
       <GlobalDefaultsSection
         autoProcessEnabled={false}
         onAutoProcessEnabledChange={() => {}}
+        dormantFeedDays={0}
+        onDormantFeedDaysChange={() => {}}
         rssRefreshIntervalMinutes={15}
         onRssRefreshIntervalMinutesChange={() => {}}
         podpingEnabled={false}

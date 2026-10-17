@@ -55,6 +55,10 @@ export interface Feed {
   // current failure run.
   lastRefreshError?: string | null;
   lastRefreshErrorAt?: string | null;
+  // Last time a client fetched the served RSS (stamped at most every 10
+  // minutes); dormant is set when dormantFeedDays is on and that is too old.
+  lastFeedRequestAt?: string | null;
+  dormant?: boolean;
   // Stamped when a Podping publish notification triggers this feed's
   // refresh; null when the feed has never been refreshed via Podping.
   lastPodpingAt?: string | null;
@@ -842,6 +846,7 @@ export interface Settings {
   maxFeedEpisodes: SettingValueNumber;
   podpingEnabled: SettingValueBoolean;
   rssRefreshIntervalMinutes: SettingValueNumber;
+  dormantFeedDays: SettingValueNumber;
   queueManualBoost: SettingValueNumber;
   queueFreshBoost: SettingValueNumber;
   queueBulkBoost: SettingValueNumber;
@@ -1030,6 +1035,7 @@ export interface Settings {
     maxFeedEpisodes: number;
     podpingEnabled: boolean;
     rssRefreshIntervalMinutes: number;
+    dormantFeedDays: number;
     segmentCategoryActions: Record<SegmentCategory, SegmentAction>;
     onlyExposeProcessedDefault: boolean;
     detectShowSegments: boolean;
@@ -1171,6 +1177,7 @@ export interface UpdateSettingsPayload {
   maxFeedEpisodes?: number;
   podpingEnabled?: boolean;
   rssRefreshIntervalMinutes?: number;
+  dormantFeedDays?: number;
   queueManualBoost?: number;
   queueFreshBoost?: number;
   queueBulkBoost?: number;
@@ -1622,6 +1629,10 @@ export interface RetentionSettings {
   retentionDays: number;
   originalRetentionDays: number;
   enabled: boolean;
+  // Never-fetched processed episodes are kept this many days (0 = off);
+  // fetched ones stay fetchedRetentionGraceDays past their first fetch.
+  unfetchedRetentionDays: number;
+  fetchedRetentionGraceDays: number;
 }
 
 export interface ProcessingTimeouts {

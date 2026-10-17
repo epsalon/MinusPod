@@ -3,7 +3,8 @@ import json
 import logging
 from datetime import datetime, timedelta, timezone
 
-from config import DEFER_SERVICE_LLM
+from config import DEFER_SERVICE_LLM, resolve_dormant_feed_days
+from database.podcasts import has_upstream
 from utils.time import ISO_FORMAT, utc_now, utc_now_iso
 
 logger = logging.getLogger(__name__)
@@ -112,8 +113,24 @@ class QueueMixin:
         elif override == 'false':
             return False
         else:
-            # No override, use global setting
-            return global_enabled
+            # No override, use global setting; a dormant feed waits for a
+            # client to fetch it again.
+            return global_enabled and not self.is_feed_dormant(podcast)
+
+    def is_feed_dormant(self, podcast: dict | None) -> bool:
+        """True when dormancy is on and no client has fetched this feed's
+        served RSS within dormant_feed_days. A never-fetched feed counts from
+        its creation. Local and recents feeds never go dormant."""
+        if not has_upstream(podcast):
+            return False
+        days = resolve_dormant_feed_days(self)
+        if days <= 0:
+            return False
+        anchor = podcast.get('last_feed_request_at') or podcast.get('created_at')
+        if not anchor:
+            return False
+        cutoff = (utc_now() - timedelta(days=days)).strftime(ISO_FORMAT)
+        return anchor < cutoff
 
     def queue_episode_for_processing(self, slug: str, episode_id: str,
                                       original_url: str, title: str = None,

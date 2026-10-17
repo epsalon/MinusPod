@@ -24,7 +24,7 @@ import { SkeletonPageHeader, SkeletonRows } from '../components/Skeleton';
 import { Pagination } from '../components/Pagination';
 import FeedTypeBadge from '../components/FeedTypeBadge';
 import PodpingBadge from '../components/PodpingBadge';
-import { feedDisplayTitle, feedHasUpstream, deleteStopsProcessingMessage } from '../utils/feedTitle';
+import { DORMANT_TITLE, feedDisplayTitle, feedHasUpstream, deleteStopsProcessingMessage } from '../utils/feedTitle';
 import FeedSettingsPanel from './feeds/FeedSettingsPanel';
 import LocalFeedPanel from './feeds/LocalFeedPanel';
 import FeedStatsCards from './feeds/FeedStatsCards';
@@ -620,6 +620,13 @@ function FeedDetail() {
                   title={feed.lastRefreshError}
                 >
                   Refresh failing since {formatDateTime(feed.lastRefreshErrorAt ?? null)}
+                </span>
+              )}
+              {feed.dormant && (
+                <span className="text-foreground" title={DORMANT_TITLE}>
+                  {feed.lastFeedRequestAt
+                    ? `Dormant: not fetched since ${formatDateTime(feed.lastFeedRequestAt)}`
+                    : 'Dormant: never fetched'}
                 </span>
               )}
             </div>
