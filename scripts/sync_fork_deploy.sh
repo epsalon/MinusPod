@@ -14,6 +14,8 @@
 #   --no-push           Don't push anything to origin
 #   --skip-sync         Skip the git steps; just rebuild and redeploy
 #   --no-cache          Build the image without the Docker layer cache
+#   --claude-fix        On rebase conflicts, have Claude Code resolve them
+#                       (claude -p), then continue the rebase
 #   -h, --help          Show this help
 #
 # Rollback:
@@ -33,7 +35,7 @@ main() {
   local MAIN=main
   local HEALTH_TIMEOUT=300
 
-  local branch="" rebase=1 push=1 sync=1 build_flags=()
+  local branch="" rebase=1 push=1 sync=1 claude_fix=0 build_flags=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -b|--branch) branch="$2"; shift 2 ;;
@@ -41,7 +43,8 @@ main() {
       --no-push) push=0; shift ;;
       --skip-sync) sync=0; shift ;;
       --no-cache) build_flags+=(--no-cache); shift ;;
-      -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+      --claude-fix) claude_fix=1; shift ;;
+      -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
       *) die "Unknown option: $1 (try --help)" ;;
     esac
   done
@@ -80,8 +83,10 @@ main() {
     if [[ "$branch" != "$MAIN" && $rebase -eq 1 ]]; then
       step "Rebasing $branch onto $MAIN"
       if ! git rebase "$MAIN"; then
-        git rebase --abort || true
-        die "Rebase of $branch onto $MAIN hit conflicts and was aborted. Rebase by hand, then rerun with --skip-sync."
+        if [[ $claude_fix -eq 0 ]] || ! claude_resolve_rebase "$branch" "$MAIN"; then
+          git rebase --abort || true
+          die "Rebase of $branch onto $MAIN hit conflicts and was aborted. Rebase by hand, then rerun with --skip-sync."
+        fi
       fi
       if [[ $push -eq 1 ]] && git rev-parse --verify --quiet "refs/remotes/$ORIGIN/$branch" >/dev/null; then
         git push --force-with-lease "$ORIGIN" "$branch"
@@ -135,6 +140,70 @@ main() {
     echo "  docker tag $IMAGE:previous $IMAGE:$TAG && MINUSPOD_VERSION=$TAG docker compose up -d $SERVICE" >&2
     exit 1
   fi
+}
+
+# Resolve an in-progress rebase's conflicts with Claude Code, one stopped
+# commit at a time. Claude only edits files; this function checks the result,
+# stages it, and continues the rebase. Returns non-zero on any failure, leaving
+# the rebase in progress for the caller to abort.
+claude_resolve_rebase() {
+  local branch="$1" onto="$2" rounds=0
+  command -v claude >/dev/null || { echo "claude CLI not found on PATH." >&2; return 1; }
+
+  while [[ -d "$(git rev-parse --git-path rebase-merge)" || -d "$(git rev-parse --git-path rebase-apply)" ]]; do
+    rounds=$((rounds + 1))
+    (( rounds <= 20 )) || { echo "Too many conflict rounds; giving up." >&2; return 1; }
+
+    local files
+    files="$(git diff --name-only --diff-filter=U)"
+    if [[ -z "$files" ]]; then
+      # Stopped without conflicts (for example, an empty commit).
+      GIT_EDITOR=true git rebase --continue && continue
+      return 1
+    fi
+
+    local commit
+    commit="$(git log -1 --format='%h %s' REBASE_HEAD 2>/dev/null || echo unknown)"
+    step "Asking Claude to resolve conflicts in commit: $commit"
+    printf '  %s\n' $files
+
+    local prompt
+    prompt="A git rebase of branch '$branch' onto '$onto' stopped with merge conflicts while applying commit: $commit.
+Conflicted files:
+$files
+
+Resolve every conflict in these files so the result keeps the intent of both sides: the upstream changes already on '$onto' and the changes from the commit being applied. Use 'git show REBASE_HEAD' to see what the commit changed and 'git log $onto' or 'git diff' for upstream context. For CHANGELOG-style files, keep both sides' entries in a sensible order.
+Remove all conflict markers. Only edit the conflicted files. Do not run git add, git commit, git rebase or any other command that changes git state; the calling script does that.
+Finish with a short summary of how you resolved each file."
+
+    if ! claude -p "$prompt" \
+        --permission-mode acceptEdits \
+        --allowedTools "Read" "Edit" "Write" "Grep" "Glob" \
+          "Bash(git diff:*)" "Bash(git show:*)" "Bash(git log:*)" "Bash(git status:*)"; then
+      echo "Claude exited with an error." >&2
+      return 1
+    fi
+
+    local f bad=0
+    for f in $files; do
+      if [[ -f "$f" ]] && grep -qE '^(<<<<<<< |>>>>>>> )' "$f"; then
+        echo "Conflict markers remain in $f." >&2
+        bad=1
+      fi
+    done
+    (( bad == 0 )) || return 1
+
+    # shellcheck disable=SC2086
+    git add -- $files
+    step "Claude's resolution (staged):"
+    git diff --cached --stat
+
+    if ! GIT_EDITOR=true git rebase --continue; then
+      # Either the next commit conflicts (loop again) or something else broke.
+      [[ -n "$(git diff --name-only --diff-filter=U)" ]] || return 1
+    fi
+  done
+  return 0
 }
 
 step() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
