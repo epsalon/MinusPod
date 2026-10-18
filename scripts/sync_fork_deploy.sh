@@ -3,7 +3,9 @@
 #
 #   1. Fast-forward local main to upstream/main and push it to origin.
 #   2. Rebase the deploy branch (default: the current branch) onto main and
-#      force-push it to origin (with lease) if it is tracked there.
+#      force-push it to origin (with lease) if it is tracked there. A local
+#      merge driver (scripts/changelog_merge.py) keeps the fork's
+#      "## [Unreleased]" CHANGELOG entries from conflicting with upstream's.
 #   3. Build ttlequals0/minuspod:local from that branch. By default this is a
 #      fast overlay build (Dockerfile.overlay): the app code and web UI laid
 #      on top of the published upstream image for the version in version.py.
@@ -49,7 +51,7 @@ main() {
       --full) full=1; shift ;;
       --no-cache) build_flags+=(--no-cache); shift ;;
       --claude-fix) claude_fix=1; shift ;;
-      -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+      -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
       *) die "Unknown option: $1 (try --help)" ;;
     esac
   done
@@ -86,6 +88,7 @@ main() {
     fi
 
     if [[ "$branch" != "$MAIN" && $rebase -eq 1 ]]; then
+      install_changelog_driver
       step "Rebasing $branch onto $MAIN"
       if ! git rebase "$MAIN"; then
         if [[ $claude_fix -eq 0 ]] || ! claude_resolve_rebase "$branch" "$MAIN"; then
@@ -163,6 +166,23 @@ Rerun with --full."
     echo "  docker tag $IMAGE:previous $IMAGE:$TAG && MINUSPOD_VERSION=$TAG docker compose up -d $SERVICE" >&2
     exit 1
   fi
+}
+
+# Register scripts/changelog_merge.py as the merge driver for CHANGELOG.md in
+# this clone only (.git/config and .git/info/attributes). The driver is copied
+# into .git/ because the working tree may not contain it mid-rebase.
+install_changelog_driver() {
+  local gitdir
+  gitdir="$(git rev-parse --git-common-dir)"
+  if [[ -f scripts/changelog_merge.py ]]; then
+    cp scripts/changelog_merge.py "$gitdir/changelog_merge.py"
+  fi
+  [[ -f "$gitdir/changelog_merge.py" ]] || return 0
+  git config merge.changelog.name "Keep fork Unreleased CHANGELOG entries on top"
+  git config merge.changelog.driver "python3 \"$(cd "$gitdir" && pwd)/changelog_merge.py\" %O %A %B"
+  mkdir -p "$gitdir/info"
+  grep -qxF 'CHANGELOG.md merge=changelog' "$gitdir/info/attributes" 2>/dev/null \
+    || echo 'CHANGELOG.md merge=changelog' >> "$gitdir/info/attributes"
 }
 
 # Resolve an in-progress rebase's conflicts with Claude Code, one stopped
