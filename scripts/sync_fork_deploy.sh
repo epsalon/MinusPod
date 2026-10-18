@@ -4,8 +4,10 @@
 #   1. Fast-forward local main to upstream/main and push it to origin.
 #   2. Rebase the deploy branch (default: the current branch) onto main and
 #      force-push it to origin (with lease) if it is tracked there.
-#   3. Build ttlequals0/minuspod:local from that branch. The image it replaces
-#      is kept as ttlequals0/minuspod:previous for rollback.
+#   3. Build ttlequals0/minuspod:local from that branch. By default this is a
+#      fast overlay build (Dockerfile.overlay): the app code and web UI laid
+#      on top of the published upstream image for the version in version.py.
+#      The image it replaces is kept as ttlequals0/minuspod:previous.
 #   4. Recreate the minuspod container and wait for it to report healthy.
 #
 # Usage: scripts/sync_fork_deploy.sh [options]
@@ -13,6 +15,8 @@
 #   --no-rebase         Deploy the branch as-is, without rebasing onto main
 #   --no-push           Don't push anything to origin
 #   --skip-sync         Skip the git steps; just rebuild and redeploy
+#   --full              Full build from Dockerfile instead of the overlay
+#                       (slow: compiles patched system packages from source)
 #   --no-cache          Build the image without the Docker layer cache
 #   --claude-fix        On rebase conflicts, have Claude Code resolve them
 #                       (claude -p), then continue the rebase
@@ -35,16 +39,17 @@ main() {
   local MAIN=main
   local HEALTH_TIMEOUT=300
 
-  local branch="" rebase=1 push=1 sync=1 claude_fix=0 build_flags=()
+  local branch="" rebase=1 push=1 sync=1 claude_fix=0 full=0 build_flags=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -b|--branch) branch="$2"; shift 2 ;;
       --no-rebase) rebase=0; shift ;;
       --no-push) push=0; shift ;;
       --skip-sync) sync=0; shift ;;
+      --full) full=1; shift ;;
       --no-cache) build_flags+=(--no-cache); shift ;;
       --claude-fix) claude_fix=1; shift ;;
-      -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+      -h|--help) sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
       *) die "Unknown option: $1 (try --help)" ;;
     esac
   done
@@ -99,7 +104,27 @@ main() {
   sha="$(git rev-parse --short HEAD)"
   local build_version="${version:-dev}-${sha}"
 
-  step "Building $IMAGE:$TAG ($build_version from $(git symbolic-ref --short HEAD))"
+  if [[ $full -eq 0 ]]; then
+    local base="$IMAGE:$version"
+    # The overlay only replaces app code, so anything that feeds the
+    # dependency stages must match the base image's release.
+    if git rev-parse --verify --quiet "refs/tags/v$version" >/dev/null; then
+      local drift
+      drift="$(git diff --name-only "v$version" HEAD -- Dockerfile requirements.txt requirements.in \
+        scripts/build_media_security_packages.py 'scripts/*-security/')"
+      [[ -z "$drift" ]] || die "These dependency files differ from v$version, so the overlay base image won't include them:
+$drift
+Rerun with --full."
+    else
+      echo "Note: no v$version tag to check dependency files against." >&2
+    fi
+    step "Pulling base image $base"
+    docker pull "$base" || docker image inspect "$base" >/dev/null 2>&1 \
+      || die "Base image $base isn't available. Rerun with --full."
+    build_flags+=(-f Dockerfile.overlay --build-arg "BASE_IMAGE=$base")
+  fi
+
+  step "Building $IMAGE:$TAG ($build_version from $(git symbolic-ref --short HEAD), $([[ $full -eq 1 ]] && echo full || echo overlay) build)"
   local old_id=""
   old_id="$(docker image inspect --format '{{.Id}}' "$IMAGE:$TAG" 2>/dev/null || true)"
   docker build "${build_flags[@]}" \

@@ -1,0 +1,40 @@
+# Fast local build: lays this checkout's app code and freshly built web UI on
+# top of a published upstream image, skipping the slow system and Python
+# dependency stages of the main Dockerfile.
+#
+# Only valid when Dockerfile, requirements.txt and the other dependency inputs
+# match the base image's release; otherwise do a full build.
+#
+#   docker build -f Dockerfile.overlay \
+#     --build-arg BASE_IMAGE=ttlequals0/minuspod:2.100.18 \
+#     -t ttlequals0/minuspod:local .
+
+ARG BASE_IMAGE=ttlequals0/minuspod:latest
+
+FROM node:26-alpine@sha256:e71ac5e964b9201072425d59d2e876359efa25dc96bb1768cb73295728d6e4ea AS frontend-builder
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json* frontend/.npmrc ./
+RUN --mount=type=cache,id=npmcache,target=/root/.npm \
+    npm ci
+COPY frontend/ ./
+RUN npm run build
+RUN mkdir -p /app/static/ui/swagger \
+    && cp node_modules/swagger-ui-dist/swagger-ui.css \
+          node_modules/swagger-ui-dist/swagger-ui-bundle.js \
+          node_modules/swagger-ui-dist/swagger-ui-standalone-preset.js \
+          /app/static/ui/swagger/
+
+FROM ${BASE_IMAGE}
+ARG MINUSPOD_VERSION=dev
+WORKDIR /app
+RUN rm -rf ./src ./static/ui ./assets ./assets_builtin
+COPY --chown=minuspod:minuspod src/ ./src/
+COPY --chown=minuspod:minuspod assets/ ./assets/
+COPY --chown=minuspod:minuspod assets/ ./assets_builtin/
+COPY --chown=minuspod:minuspod version.py openapi.yaml gunicorn.conf.py ./
+COPY --chown=minuspod:minuspod entrypoint.sh ./
+COPY --chown=minuspod:minuspod --from=frontend-builder /app/static/ui ./static/ui/
+RUN find ./src ./static/ui -type f -exec chmod 644 {} \; && \
+    find ./src ./static/ui -type d -exec chmod 755 {} \; && \
+    chmod 755 ./entrypoint.sh
+LABEL org.opencontainers.image.version="${MINUSPOD_VERSION}"
