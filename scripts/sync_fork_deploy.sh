@@ -125,17 +125,15 @@ Rerun with --full."
   fi
 
   step "Building $IMAGE:$TAG ($build_version from $(git symbolic-ref --short HEAD), $([[ $full -eq 1 ]] && echo full || echo overlay) build)"
-  local old_id=""
-  old_id="$(docker image inspect --format '{{.Id}}' "$IMAGE:$TAG" 2>/dev/null || true)"
+  # Tag the current image first: once the build takes the tag, Docker may
+  # delete the untagged old image.
+  if docker image inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
+    docker tag "$IMAGE:$TAG" "$IMAGE:previous"
+    echo "Current image kept as $IMAGE:previous"
+  fi
   docker build "${build_flags[@]}" \
     --build-arg "MINUSPOD_VERSION=$build_version" \
     -t "$IMAGE:$TAG" .
-  local new_id
-  new_id="$(docker image inspect --format '{{.Id}}' "$IMAGE:$TAG")"
-  if [[ -n "$old_id" && "$old_id" != "$new_id" ]]; then
-    docker tag "$old_id" "$IMAGE:previous"
-    echo "Previous image kept as $IMAGE:previous"
-  fi
 
   step "Redeploying $SERVICE"
   MINUSPOD_VERSION="$TAG" docker compose up -d "$SERVICE"
